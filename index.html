@@ -9619,7 +9619,24 @@ function hldTargets(){
   const m = getMTPILatest(); if(!m && !isManualCash()) return null;
   const g = gatedTargets(LAST_RES, m ? m.signal : null);
   const t = {}; for(const a in g.targets) if(g.targets[a] > 0.0005) t[a] = g.targets[a];
-  return {t, inv: Object.values(t).reduce((x,y)=>x+y,0), m, g};
+  const sd = hldSdcaPart(); for(const a in sd) t[a] = (t[a] || 0) + sd[a];
+  return {t, inv: Object.values(t).reduce((x,y)=>x+y,0), m, g, sd};
+}
+// SDCA coins (from the SDCA buy log) are part of the target while the MTPI is ≤ 0, so the RSPS plan holds them instead of selling them.
+// When the MTPI turns positive the SDCA part drops out and everything is rebalanced into the RSPS targets (the hand-over rule).
+let HLD_SD_GUARD = false;
+function hldSdcaPart(){
+  if(HLD_SD_GUARD || typeof sdcaModel !== 'function') return {};
+  HLD_SD_GUARD = true;
+  try{
+    const book = hldBook(); if(!(book.total > 0)) return {};
+    const M = sdcaModel(SD.px); if(M.mtpiPos !== false) return {};
+    const out = {};
+    for(const [k, name] of SDCA_ASSETS){ const u = M.bk.u[k]; if(!(u > 0)) continue;
+      const pr = (HLD.px[name] && HLD.px[name].usd) || (SD.px && SD.px[k]) || hldLastClose(name);
+      if(pr > 0) out[name] = u * pr / book.total; }
+    return out;
+  }catch(e){ return {}; } finally{ HLD_SD_GUARD = false; }
 }
 // why a held asset has no target
 function hldExitReason(a){
@@ -9667,7 +9684,7 @@ function hldPlanRows(book, tg, mode){
   const rows = order.map(a => {
     const c = book.w(a); const t = mode === 'resize' ? c*ratio : (tg.t[a] || 0);
     const price = book.byAsset[a] ? book.byAsset[a].price : (HLD.px[a] && HLD.px[a].usd) || hldLastClose(a);
-    return {a, c, t, d: t - c, price, hb: HB_POOL.includes(a), slot: sel.indexOf(a) + 1, out: !ASSETS.includes(a)};
+    return {a, c, t, d: t - c, price, hb: HB_POOL.includes(a), slot: sel.indexOf(a) + 1, out: !ASSETS.includes(a), sd: !!(tg.sd && tg.sd[a])};
   });
   const cInv = rows.reduce((s,r)=>s+r.c,0), tInv = rows.reduce((s,r)=>s+r.t,0);
   return {rows, cash: {c: Math.max(0, 1 - cInv), t: Math.max(0, 1 - tInv)}, ratio};
@@ -9703,7 +9720,7 @@ function hldRenderPlan(){
       : small ? '<span class="hp-dim">HOLD</span>'
       : r.t < 1e-6 ? '<span class="hp-sell">SELL ALL</span>' : dU > 0 ? '<span class="hp-buy">BUY</span>' : '<span class="hp-sell">SELL</span>';
     const units = (isCash || zero || small || !(r.price > 0) || !T) ? '' : (dU>0?'+':'−')+(Math.abs(dU)/r.price).toLocaleString('en-AU', {maximumSignificantDigits: 6});
-    const tag = isCash ? '' : r.slot ? '<span class="hp-hb">HB #'+r.slot+'</span>' : r.out ? '<span class="hp-hb out">not in system</span>' : r.hb ? '<span class="hp-hb out">HB, not selected</span>' : '';
+    const tag = isCash ? '' : r.sd ? '<span class="hp-hb">SDCA</span>' : r.slot ? '<span class="hp-hb">HB #'+r.slot+'</span>' : r.out ? '<span class="hp-hb out">not in system</span>' : r.hb ? '<span class="hp-hb out">HB, not selected</span>' : '';
     const why = !isCash && r.t < 1e-6 && r.c > 0 ? '<span class="tag">'+hldEsc(hldExitReason(r.a))+'</span>' : '';
     const dcol = Math.abs(r.d) < 0.00005 ? 'var(--text3)' : r.d > 0 ? 'var(--green)' : 'var(--red)';
     return '<tr class="'+(isCash?'hp-cashrow':'')+(zero?' hp-zero':'')+'"><td class="l"><b>'+r.a+'</b> '+tag+why+'</td>'
@@ -10399,7 +10416,7 @@ function hldSummary(){
   const targets = Object.entries(tg.t).sort((a,b)=>b[1]-a[1]).map(([a,w]) => ({asset: a === 'ZROL' ? 'ZRO' : a, w}));
   return {lastDate: LAST_RES.lastDate, mtpi: cur ? cur.mtpi : null, state: cur ? stateLabel(cur.signal) : 'MANUAL', invested: tg.inv, targets,
           rebalDue: dn % N === 0, flip, nextReb: hldNextRebLocal(N), rebalDays: N, hb: (LAST_RES.hbSel||[]).map(a => a === 'ZROL' ? 'ZRO' : a),
-          residual: !!(tg.g && tg.g.residual), snapshot: window.__SNAP ? window.__SNAP.asOf : null};
+          residual: !!(tg.g && tg.g.residual), sd: tg.sd || {}, snapshot: window.__SNAP ? window.__SNAP.asOf : null};
 }
 function hldRenderToday(){
   const root = document.getElementById('td-root'); if(!root) return;
@@ -10420,10 +10437,11 @@ function hldRenderToday(){
     + '<div><span class="td-lbl">Target invested</span><b>'+P(sm.invested)+'</b><i>'+(sm.residual ? 'risk-off: trending coins only' : 'cash '+P(1-sm.invested))+'</i></div></div>'
     + '<div class="td-card td-act '+(trade ? 'go' : 'wait')+'"><b>'+(trade ? 'TRADE TODAY' : 'NO TRADE TODAY')+'</b><span>'+hldEsc(why)+'</span>'+(trade ? '<span>Next scheduled: '+hldEsc(sm.nextReb)+'</span>' : '')+'</div>';
   // targets
-  html += '<div class="td-card"><div class="td-sub">RSPS target · close of '+sm.lastDate+' UTC</div>';
+  const hasSd = Object.keys(sm.sd || {}).length > 0;
+  html += '<div class="td-card"><div class="td-sub">'+(hasSd ? 'Target · RSPS + SDCA coins (MTPI ≤ 0)' : 'RSPS target')+' · close of '+sm.lastDate+' UTC</div>';
   if(!sm.targets.length) html += '<div class="td-row"><span>All cash</span><b>100%</b></div>';
   for(const r of sm.targets){ const usd = has ? r.w*book.total : null;
-    html += '<div class="td-row"><span>'+r.asset+(sm.hb.includes(r.asset) ? ' <em>HB</em>' : '')+'</span><b>'+P(r.w)+'</b>'+(has ? '<i>'+money(usd,'US$')+' · '+money(usd*fx,'A$')+'</i>' : '')+'</div>'; }
+    html += '<div class="td-row"><span>'+r.asset+(sm.hb.includes(r.asset) ? ' <em>HB</em>' : '')+((sm.sd||{})[r.asset] ? ' <em>SDCA</em>' : '')+'</span><b>'+P(r.w)+'</b>'+(has ? '<i>'+money(usd,'US$')+' · '+money(usd*fx,'A$')+'</i>' : '')+'</div>'; }
   html += '<div class="td-row td-cash"><span>Cash</span><b>'+P(1-sm.invested)+'</b>'+(has ? '<i>'+money((1-sm.invested)*book.total,'US$')+'</i>' : '')+'</div></div>';
   // trades
   if(has){
