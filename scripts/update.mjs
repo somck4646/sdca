@@ -45,7 +45,10 @@ const get = async (url, tries = 3) => {
   throw err;
 };
 
+const latestClose = () => { const now = new Date(); const m = now.getUTCHours() * 60 + now.getUTCMinutes(); return new Date(m >= 23 * 60 + 15 ? now : now - 864e5).toISOString().slice(0, 10); };
+
 async function read() {
+  const cutoff = latestClose();   // ignore today's still-moving reading until checkonchain's end-of-day update (~23:13 UTC)
   const out = {v: 1, fetched: new Date().toISOString().slice(0, 16) + 'Z', ind: {}, errors: []};
   const ok = v => typeof v === 'number' && isFinite(v), last7 = {};
   for (const [id, path, trace, mode] of IND) {
@@ -54,7 +57,7 @@ async function read() {
       const t = T.find(q => q.name === trace); if (!t) throw new Error('trace missing');
       const pt = T.find(q => q.name === 'Price' || q.name === 'Bitcoin Price');
       const pmap = {}; if (pt) for (let i = 0; i < pt.x.length; i++) if (ok(pt.y[i])) pmap[String(pt.x[i]).slice(0, 10)] = pt.y[i];
-      const D = [], V = []; for (let i = 0; i < t.x.length; i++) if (ok(t.y[i])) { D.push(String(t.x[i]).slice(0, 10)); V.push(t.y[i]); }
+      const D = [], V = []; for (let i = 0; i < t.x.length; i++) if (ok(t.y[i]) && String(t.x[i]).slice(0, 10) <= cutoff) { D.push(String(t.x[i]).slice(0, 10)); V.push(t.y[i]); }
       if (V.length < 500) throw new Error('short history');
       const score = new Array(V.length);
       if (mode === 'osc') for (let i = 0; i < V.length; i++) score[i] = 1 - V[i] / 100;
@@ -77,11 +80,8 @@ async function read() {
   return out;
 }
 
-const latestClose = () => { const now = new Date(); const m = now.getUTCHours() * 60 + now.getUTCMinutes(); return new Date(m >= 23 * 60 + 15 ? now : now - 864e5).toISOString().slice(0, 10); };
-
 const prev = (() => { try { return JSON.parse(fs.readFileSync('sdca_data.json', 'utf8')).data; } catch (e) { return null; } })();
 const want = latestClose();
-if (prev && prev.asof >= want && !process.env.FORCE) { console.log('already have ' + prev.asof); process.exit(0); }
 
 const d = await read();
 const ids = IND.map(r => r[0]);
@@ -95,7 +95,9 @@ if (p && d.binClose && Math.abs(p / d.binClose - 1) > 0.03) problems.push('check
 const bottom = ids.every(id => d.ind[id]) ? ids.reduce((a, id) => a + d.ind[id][2], 0) / 9 : null;
 console.log(JSON.stringify({asof: d.asof, want, bottom: bottom && +bottom.toFixed(4), problems}));
 if (problems.length) { console.error('NOT saved: ' + problems.join(' | ')); process.exit(1); }
-if (prev && d.asof <= prev.asof && !process.env.FORCE) { console.log('checkonchain has not published ' + want + ' yet (latest ' + d.asof + '); keeping ' + prev.asof); process.exit(0); }
+if (prev && d.asof < prev.asof && !process.env.FORCE) { console.log('older than saved ' + prev.asof + '; keeping it'); process.exit(0); }
+if (prev && d.asof === prev.asof && JSON.stringify(d.ind) === JSON.stringify(prev.ind) && JSON.stringify(d.hist) === JSON.stringify(prev.hist) && !process.env.FORCE) { console.log('no change for ' + d.asof); process.exit(0); }
+if (d.asof < want) console.log('note: checkonchain has not published ' + want + ' yet; saving ' + d.asof);
 
 const feed = {data: d, sum: hash(JSON.stringify(d))};
 fs.writeFileSync('sdca_data.json', JSON.stringify(feed));
@@ -103,5 +105,5 @@ fs.writeFileSync('sdca_data.js', 'window.SDCA_FEED = ' + JSON.stringify(feed) + 
 // keep a small history file (one line per close) for audit
 const line = JSON.stringify({d: d.asof, bottom: +bottom.toFixed(4), ind: Object.fromEntries(ids.map(id => [id, d.ind[id][2]])), fetched: d.fetched}) + '\n';
 const hp = 'history.jsonl'; const old = fs.existsSync(hp) ? fs.readFileSync(hp, 'utf8') : '';
-if (!old.includes('"d":"' + d.asof + '"')) fs.appendFileSync(hp, line);
+fs.writeFileSync(hp, old.split('\n').filter(l => { try { return l && JSON.parse(l).d < d.asof; } catch (e) { return false; } }).map(l => l + '\n').join('') + line);
 console.log('saved ' + d.asof + ' bottom ' + bottom.toFixed(4));
