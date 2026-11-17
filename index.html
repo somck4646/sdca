@@ -535,6 +535,10 @@
   .hp-banner.act { background:rgba(0,212,184,.10); border:1px solid rgba(0,212,184,.45); color:var(--text); }
   .hp-banner.hold { background:var(--bg2); border:1px solid var(--border2); color:var(--text2); }
   .hp-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-bottom:12px; }
+  .hl-vol { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:12px; }
+  .hl-vol-h { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); margin-bottom:6px; }
+  .hl-vol-h i { text-transform:none; letter-spacing:0; font-style:normal; margin-left:6px; }
+  .hl-vol-t { width:100%; margin-bottom:8px; } .hl-vol-t td, .hl-vol-t th { text-align:right; } .hl-vol-t .l { text-align:left; }
   .hp-kpis > div { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:9px 11px; min-width:0; }
   .hp-kpis span { display:block; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text3); }
   .hp-kpis b { display:block; font-family:var(--font-mono); font-size:16px; color:var(--text); margin-top:3px; }
@@ -9741,6 +9745,43 @@ function hldRenderPlan(){
     + '<div class="hp-kpis" style="margin-top:12px"><div><span>Sell</span><b>'+usd(sell)+'</b><i>'+aud(sell*fx.r)+'</i></div><div><span>Buy</span><b>'+usd(buy)+'</b><i>'+aud(buy*fx.r)+'</i></div><div><span>Invested now → target</span><b>'+P(td.curInv,1)+' → '+P(mode==='resize'? td.curInv*plan.ratio : tg.inv,1)+'</b><i>MTPI '+(tg.m ? (tg.m.mtpi>=0?'+':'')+tg.m.mtpi.toFixed(2)+' · '+stateLabel(tg.m.signal) : 'manual cash')+'</i></div><div><span>AUD / USD</span><b>'+(1/fx.r).toFixed(4)+'</b><i>'+fx.r.toFixed(4)+' A$ per US$ · '+hldEsc(fx.src)+'</i></div></div>'
     + '<div class="hp-note">Sell first, then buy. Est. fees + slippage ≈ '+usd(fee)+' at '+((CFG.btFeeBps||10)+(CFG.slipBps||10))+' bp. Moves under 0.5pp are marked HOLD (not worth the fees). Targets come from the RSPS allocation at the confirmed close of '+LAST_RES.lastDate+' UTC (High Beta slots: '+((LAST_RES.hbSel||[]).join(', ')||'—')+'); dollar amounts use '+(window.__SNAP ? 'snapshot prices from '+new Date(window.__SNAP.asOf).toLocaleString('en-AU', {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}) : HLD.pxTime ? 'live prices from '+HLD.pxTime.toLocaleTimeString() : 'the last daily close (press Refresh prices for live)')+'.</div>';
 }
+/* ── expected volatility of the current portfolio (same per-asset vols and correlations the RSPS uses) ── */
+function hldVolCalc(book, win){
+  const w = {}; if(!(book.total > 0)) return null;
+  for(const a in book.byAsset){ const u = book.byAsset[a].usd; if(u > 0) w[a] = u / book.total; }
+  const as = Object.keys(w), sig = {}, missing = [];
+  for(const a of as){ const v = LAST_RES && LAST_RES.volAll && LAST_RES.volAll[a]; const x = v ? (win === '90D' ? v.v90 : v.vol) : NaN;
+    if(isFinite(x) && x > 0) sig[a] = x; else { sig[a] = 0; missing.push(a); } }
+  let varp = 0, worst = 0; const contrib = {};
+  for(const a of as){ let row = 0; for(const b of as) row += w[b]*sig[a]*sig[b]*pvCorr(a, b); contrib[a] = w[a]*row; varp += contrib[a]; worst += w[a]*sig[a]; }
+  const inv = as.reduce((t,a)=>t+w[a],0);
+  const rc = {}; for(const a of as) rc[a] = varp > 0 ? contrib[a]/varp : 0;
+  return {yearly: Math.sqrt(Math.max(0, varp)), worst, inv, w, sig, rc, missing};
+}
+function hldRenderVol(book, fx){
+  const k = document.getElementById('hl-kpis'); if(!k) return;
+  let box = document.getElementById('hl-vol'); if(!box){ box = document.createElement('div'); box.id = 'hl-vol'; box.className = 'hl-vol'; k.parentNode.insertBefore(box, k.nextSibling); }
+  if(!LAST_RES || !LAST_RES.volAll){ box.innerHTML = '<div class="hl-vol-h">Expected volatility</div><div class="hp-note">Waiting for the RSPS price data…</div>'; return; }
+  if(!(book.total > 0)){ box.innerHTML = '<div class="hl-vol-h">Expected volatility</div><div class="hp-note">Add your coins and cash to see it.</div>'; return; }
+  const sys = hldVolCalc(book, CFG.pvWindow === '90D' ? '90D' : 'cur'), v90 = hldVolCalc(book, '90D');
+  const N = CFG.annualise || 365;
+  const H = [['Daily', 1], ['Weekly', 7], ['Monthly', N/12], ['Yearly', N]];
+  const pc = x => isFinite(x) ? (x*100).toFixed(2)+'%' : '—';
+  const usd = x => 'US$'+Math.round(x).toLocaleString('en-AU'), aud = x => 'A$'+Math.round(x).toLocaleString('en-AU');
+  const sysLab = CFG.pvWindow === '90D' ? '90-day vol' : 'system vol (7/14-day blend)';
+  let h = '<div class="hl-vol-h">Expected volatility · current portfolio <i>1 standard deviation · ' + hldEsc(sysLab) + ' · ' + (CFG.pvCorr === 'Measured' ? 'measured 90-day correlations' : 'assumed correlation ' + CFG.pvRho) + ' · cash = 0</i></div>'
+    + '<table class="rsps-table hl-vol-t"><thead><tr><th class="l">Horizon</th><th>Portfolio vol</th><th>Typical move (±1σ)</th><th>A$</th><th>Crypto part only</th><th>Using 90-day vol</th></tr></thead><tbody>';
+  for(const [lab, d] of H){ const f = Math.sqrt(d / N);
+    h += '<tr><td class="l"><b>' + lab + '</b></td><td><b>' + pc(sys.yearly*f) + '</b></td><td>' + usd(sys.yearly*f*book.total) + '</td><td>' + aud(sys.yearly*f*book.total*fx.r) + '</td><td>' + pc(sys.inv > 0 ? sys.yearly/sys.inv*f : 0) + '</td><td>' + pc(v90.yearly*f) + '</td></tr>'; }
+  h += '</tbody></table>';
+  const rows = Object.keys(sys.w).sort((a,b) => sys.w[b] - sys.w[a]);
+  h += '<table class="rsps-table hl-vol-t hl-vol-a"><thead><tr><th class="l">Asset</th><th>Weight</th><th>Its yearly vol</th><th>90-day vol</th><th>Share of portfolio risk</th></tr></thead><tbody>'
+    + rows.map(a => '<tr><td class="l">' + (a === 'ZROL' ? 'ZRO' : a) + '</td><td>' + pc(sys.w[a]) + '</td><td>' + (sys.sig[a] > 0 ? pc(sys.sig[a]) : '—') + '</td><td>' + (v90.sig[a] > 0 ? pc(v90.sig[a]) : '—') + '</td><td>' + pc(sys.rc[a]) + '</td></tr>').join('')
+    + '<tr><td class="l">Cash</td><td>' + pc(book.cashUsd/book.total) + '</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr></tbody></table>';
+  h += '<div class="hp-note">Roughly 2 periods in 3 should land inside ±1σ and about 19 in 20 inside ±2σ (twice the figure), but crypto has fat tails, so big days come more often than that. If every coin moved together, the yearly figure would be ' + pc(sys.worst) + '.'
+    + (sys.missing.length ? ' No volatility data for: ' + sys.missing.join(', ') + ' (counted as 0 — treat the figure as a floor).' : '') + ' The system vol reacts to the last 1–2 weeks; the 90-day column is steadier.</div>';
+  box.innerHTML = h;
+}
 /* ── Current Holdings page ── */
 function hldAutoExits(book){
   const tg = hldTargets(); if(!tg) return [];
@@ -9767,6 +9808,7 @@ function hldRenderPage(){
     + '<div><span>Cash (counted)</span><b>'+usd(book.cashUsd)+'</b><i>'+P(book.total ? book.cashUsd/book.total : 0)+'</i></div>'
     + '<div><span>System target invested</span><b>'+(tg ? P(tg.inv) : '—')+'</b><i>'+(tg && tg.m ? 'MTPI '+(tg.m.mtpi>=0?'+':'')+tg.m.mtpi.toFixed(2)+' · '+stateLabel(tg.m.signal) : 'loading…')+'</i></div>'
     + '<div><span>AUD / USD</span><b>'+(1/fx.r).toFixed(4)+'</b><i>'+hldEsc(fx.src)+'</i></div>';
+  try{ hldRenderVol(book, fx); }catch(e){}
   const fxIn = document.getElementById('hl-fx'); if(fxIn && document.activeElement !== fxIn) fxIn.value = s.fxManual > 0 ? (1/s.fxManual).toFixed(4) : '';
   const cu = document.getElementById('hl-cash-usd'), ca = document.getElementById('hl-cash-aud'), cc = document.getElementById('hl-count-aud');
   if(cu && document.activeElement !== cu) cu.value = s.cashUSD || ''; if(ca && document.activeElement !== ca) ca.value = s.cashAUD || ''; if(cc) cc.checked = !!s.countAud;
