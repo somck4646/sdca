@@ -10020,7 +10020,7 @@ async function sdcaLiveFetch(onStep){
       const t = T.find(q => q.name === trace); if(!t) throw new Error('trace missing');
       const pt = T.find(q => q.name === 'Price' || q.name === 'Bitcoin Price');
       const pmap = {}; if(pt) for(let i=0;i<pt.x.length;i++) if(ok(pt.y[i])) pmap[String(pt.x[i]).slice(0,10)] = pt.y[i];
-      const D = [], V = []; for(let i=0;i<t.x.length;i++) if(ok(t.y[i])){ D.push(String(t.x[i]).slice(0,10)); V.push(t.y[i]); }
+      const D = [], V = [], cut = sdcaExpectedClose(); for(let i=0;i<t.x.length;i++) if(ok(t.y[i]) && String(t.x[i]).slice(0,10) <= cut){ D.push(String(t.x[i]).slice(0,10)); V.push(t.y[i]); }
       if(V.length < 500) throw new Error('short history');
       const score = new Array(V.length);
       if(mode === 'osc') for(let i=0;i<V.length;i++) score[i] = 1 - V[i]/100;
