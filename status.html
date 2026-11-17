@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SDCA daily feed</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#111;background:#fff}@media(prefers-color-scheme:dark){body{color:#eee;background:#111}}td{padding:2px 12px 2px 0}code{font-size:13px}</style></head><body>
+<h1>SDCA daily feed</h1><p id="s">Loading…</p><table id="t"></table>
+<p><a href="./">Open the dashboard</a> · machine-readable: <code>sdca_data.json</code>. Updated every morning by the GitHub Action in this repository.</p>
+<script>
+fetch('sdca_data.json?t='+Date.now()).then(r=>r.json()).then(F=>{const d=F.data,v=Object.values(d.ind).map(x=>x[2]),b=v.reduce((a,c)=>a+c,0)/v.length;
+document.getElementById('s').textContent='Close '+d.asof+' · Bottom Score '+b.toFixed(3)+' · fetched '+d.fetched;
+document.getElementById('t').innerHTML=Object.entries(d.ind).map(([k,x])=>'<tr><td>'+k+'</td><td>'+x[1]+'</td><td><b>'+x[2].toFixed(3)+'</b></td></tr>').join('');}).catch(e=>{document.getElementById('s').textContent='No data yet: '+e.message;});
+</script></body></html>
