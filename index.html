@@ -9944,7 +9944,7 @@ const SDCA_ASSETS = [['B','BTC','BTCUSDT'],['E','ETH','ETHUSDT'],['S','SOL','SOL
 const SDCA_SPLITS = {s603010: {B:0.6, E:0.3, S:0.1, label:'60% BTC / 30% ETH / 10% SOL'}, btc: {B:1, E:0, S:0, label:'BTC only'}};
 const SDCA_BRAKE_DD = 0.40, SDCA_BRAKE_RE = 0.05;   // disaster brake: holdings 40% below cost → sell half; resume at a score 0.05 higher
 const SDCA_KEY = 'sdca_v1';
-const SDCA_DEF = {capital: 0, dcaPct: 0.5, start: '2026-11-15', split: 's603010', brake: {on:false, paused:null},
+const SDCA_DEF = {capital: 0, dcaPct: 0.5, start: (() => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0'); })(),   // a new browser starts its campaign on the day it first opens the page split: 's603010', brake: {on:false, paused:null},
   log: [], manual: {on:false, v:{}}, hist: {}};
 const SD = {px: null, pxT: 0, pxSrc: '', feedErr: null, migrating: false};
 const sdAsset = k => SDCA_ASSETS.find(a => a[0] === k)[1];
@@ -10008,10 +10008,10 @@ function sdcaCheckFeed(F){
   if(ids.some(id => D.ind && D.ind[id] && !(D.ind[id][2] >= 0 && D.ind[id][2] <= 1))) bad('A score is outside 0–1');
   const yUTC = sdUtcDate(Date.now() - 864e5), age = D.asof ? Math.round((Date.parse(yUTC) - Date.parse(D.asof))/864e5) : 99;
   const stale = age > 0;
-  if(stale) bad('Data is for ' + D.asof + ' — ' + age + ' day' + (age === 1 ? '' : 's') + ' older than the latest close (' + yUTC + '). The daily update may not have run'); else good('Up to date (latest close ' + D.asof + ')');
+  if(stale) bad(age === 1 ? 'Waiting for checkonchain\'s end-of-day update for ' + yUTC + ' (latest finished close here is ' + D.asof + '). It is usually in by about 10:20am Melbourne time but is sometimes hours late; this page re-checks every 5 minutes and updates by itself.' : 'Data is for ' + D.asof + ' — ' + age + ' days older than the latest close (' + yUTC + '). Check the Actions tab on GitHub.'); else good('Up to date (latest close ' + D.asof + ')');
   const p = ids.map(id => D.ind && D.ind[id] && D.ind[id][3]).filter(x => x > 0)[0];
   if(p && D.binClose){ const dv = p / D.binClose - 1; if(Math.abs(dv) > 0.03) bad('checkonchain BTC price ' + sdUSD(p) + ' is ' + (dv*100).toFixed(1) + '% from the Binance close ' + sdUSD(D.binClose)); else good('BTC price matches Binance within ' + Math.abs(dv*100).toFixed(1) + '%'); }
-  return {ok: !chk.some(c => !c.ok && !/older than/.test(c.m)), stale, chk, data: D};
+  return {ok: !chk.some(c => !c.ok && !/older than|Waiting for/.test(c.m)), stale, chk, data: D};
 }
 function sdcaParseFeedText(txt){ const i = txt.indexOf('{'), j = txt.lastIndexOf('}'); if(i < 0 || j < 0) throw new Error('not an SDCA data file'); return JSON.parse(txt.slice(i, j+1)); }
 // ── live checkonchain reader: the page fetches the 9 charts itself (no PC task needed) ──
@@ -10069,32 +10069,48 @@ async function sdcaLiveFetch(onStep){
     ['ism','ism_pmi_bitcoin/ism_pmi_bitcoin','Bitcoin vs Trend Index','rank'],
     ['plq','quantiles_powerlaw/quantiles_powerlaw','Quantile Oscillator','osc'],
     ['tmm','quantiles_pricetruemean/quantiles_pricetruemean','Quantile Oscillator','osc']];
-  const out = {v:1, fetched: new Date().toISOString().slice(0,16) + 'Z', ind:{}, errors:[]};
-  const ok = v => typeof v === 'number' && isFinite(v), last7 = {}, via = new Set();
+  const ok = v => typeof v === 'number' && isFinite(v), via = new Set(), TR = {}, errs = [];
   let k = 0;
-  await Promise.all(IND.map(async ([id, path, trace, mode]) => {
+  await Promise.all(IND.map(async ([id, path, trace]) => {
     try{
-      const html = await sdFetchText('https://charts-cdn.checkonchain.com/btconchain/pricing/' + path + '_light.html', via);
-      const T = sdPlotlyTraces(html);
+      const T = sdPlotlyTraces(await sdFetchText('https://charts-cdn.checkonchain.com/btconchain/pricing/' + path + '_light.html', via));
       const t = T.find(q => q.name === trace); if(!t) throw new Error('trace missing');
-      const pt = T.find(q => q.name === 'Price' || q.name === 'Bitcoin Price');
-      const pmap = {}; if(pt) for(let i=0;i<pt.x.length;i++) if(ok(pt.y[i])) pmap[String(pt.x[i]).slice(0,10)] = pt.y[i];
-      const D = [], V = [], cut = sdcaExpectedClose(); for(let i=0;i<t.x.length;i++) if(ok(t.y[i]) && String(t.x[i]).slice(0,10) <= cut){ D.push(String(t.x[i]).slice(0,10)); V.push(t.y[i]); }
-      if(V.length < 500) throw new Error('short history');
-      const score = new Array(V.length);
-      if(mode === 'osc') for(let i=0;i<V.length;i++) score[i] = 1 - V[i]/100;
-      else { const s = []; const lb = x => { let lo = 0, hi = s.length; while(lo < hi){ const m = (lo+hi) >> 1; if(s[m] < x) lo = m+1; else hi = m; } return lo; };
-        for(let i=0;i<V.length;i++){ s.splice(lb(V[i]), 0, V[i]); score[i] = 1 - lb(V[i]) / s.length; } }
-      const n = V.length;
-      out.ind[id] = [D[n-1], +V[n-1].toFixed(4), +score[n-1].toFixed(4), pmap[D[n-1]] != null ? Math.round(pmap[D[n-1]]) : null];
-      for(let j = Math.max(0, n-7); j < n; j++) (last7[D[j]] = last7[D[j]] || []).push(score[j]);
-    }catch(e){ out.errors.push(id + ': ' + e.message); }
+      TR[id] = {t, pt: T.find(q => q.name === 'Price' || q.name === 'Bitcoin Price')};
+    }catch(e){ errs.push(id + ': ' + e.message); }
     if(onStep) onStep(++k);
   }));
-  const L = Object.values(out.ind), dates = [...new Set(L.map(x => x[0]))].sort();
-  out.asof = dates[0] || null;
-  out.hist = Object.keys(last7).sort().filter(d => last7[d].length === 9).map(d => [d, +(last7[d].reduce((a,b)=>a+b,0)/9).toFixed(4)]);
-  try{ const day = Date.parse(out.asof + 'T00:00:00Z'); const kk = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=' + day + '&limit=1').then(r => r.json()); out.binClose = Math.round(+kk[0][4]); }catch(e){ out.binClose = null; }
+  const build = cut => {
+    const out = {v:1, fetched: new Date().toISOString().slice(0,16) + 'Z', ind:{}, errors: errs.slice()}, last7 = {};
+    for(const [id, , , mode] of IND){ const r = TR[id]; if(!r) continue;
+      try{
+        const pmap = {}; if(r.pt) for(let i=0;i<r.pt.x.length;i++) if(ok(r.pt.y[i])) pmap[String(r.pt.x[i]).slice(0,10)] = r.pt.y[i];
+        const D = [], V = []; for(let i=0;i<r.t.x.length;i++) if(ok(r.t.y[i]) && String(r.t.x[i]).slice(0,10) <= cut){ D.push(String(r.t.x[i]).slice(0,10)); V.push(r.t.y[i]); }
+        if(V.length < 500) throw new Error('short history');
+        const score = new Array(V.length);
+        if(mode === 'osc') for(let i=0;i<V.length;i++) score[i] = 1 - V[i]/100;
+        else { const s = []; const lb = x => { let lo = 0, hi = s.length; while(lo < hi){ const m = (lo+hi) >> 1; if(s[m] < x) lo = m+1; else hi = m; } return lo; };
+          for(let i=0;i<V.length;i++){ s.splice(lb(V[i]), 0, V[i]); score[i] = 1 - lb(V[i]) / s.length; } }
+        const n = V.length;
+        out.ind[id] = [D[n-1], +V[n-1].toFixed(4), +score[n-1].toFixed(4), pmap[D[n-1]] != null ? Math.round(pmap[D[n-1]]) : null];
+        for(let j = Math.max(0, n-7); j < n; j++) (last7[D[j]] = last7[D[j]] || []).push(score[j]);
+      }catch(e){ out.errors.push(id + ': ' + e.message); }
+    }
+    const dates = [...new Set(Object.values(out.ind).map(x => x[0]))].sort();
+    out.asof = dates[0] || null;
+    out.hist = Object.keys(last7).sort().filter(d => last7[d].length === 9).map(d => [d, +(last7[d].reduce((a,b)=>a+b,0)/9).toFixed(4)]);
+    return out;
+  };
+  const close = async d => { try{ const kk = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=' + Date.parse(d + 'T00:00:00Z') + '&limit=1').then(r => r.json()); return Math.round(+kk[0][4]); }catch(e){ return null; } };
+  const px = o => { const v = Object.values(o.ind).map(x => x[3]).filter(x => x > 0); return v[0] || null; };
+  let out = build(sdcaExpectedClose()); out.binClose = out.asof ? await close(out.asof) : null;
+  // checkonchain first posts each day early in that day and finalises it at its end-of-day update; until then its price is far from the close → use the day before
+  const p = px(out);
+  const lateRange = async d => { try{ const t0 = Date.parse(d + 'T21:00:00Z'); const kk = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=' + t0 + '&limit=3').then(r => r.json()); return kk.length ? [Math.min(...kk.map(r => +r[3])), Math.max(...kk.map(r => +r[2]))] : null; }catch(e){ return null; } };
+  const rg = out.asof && p ? await lateRange(out.asof) : null;
+  const notFinal = p && (rg ? !(p >= rg[0]*0.995 && p <= rg[1]*1.005) : (out.binClose && Math.abs(p / out.binClose - 1) > 0.015));
+  if(out.asof && notFinal && !out.errors.length){
+    const notFinal = out.asof; out = build(sdUtcDate(Date.parse(notFinal) - 864e5)); out.binClose = out.asof ? await close(out.asof) : null; out.pending = notFinal;
+  }
   out.src = 'live (' + [...via].join(', ') + ')';
   return {data: out, sum: sdcaHash(JSON.stringify(out))};
 }
@@ -10221,7 +10237,7 @@ function sdcaModel(px){
   const daysAtRate = value > 0 ? Math.ceil(bucket / value) : null;
   const elapsed = Math.floor((Date.parse(sdLocalDate()) - Date.parse(S.start)) / 864e5) + 1;
   let reason = '';
-  if(!useable) reason = have.length < 9 ? 'Indicator data missing or failed a check — reload the data file or enter the readings manually' : 'The data is not from the latest close — reload the data file or enter today\'s readings manually' + (inZone && mult ? ' (on the old data it would be ' + sdUSD(Math.round(normal*mult)) + ')' : '');
+  if(!useable) reason = have.length < 9 ? 'Indicator data missing or failed a check — reload the data file or enter the readings manually' : ('Waiting for checkonchain to publish the latest close' + (fc.data && fc.data.asof ? ' (newest finished close: ' + fc.data.asof + ')' : '') + '. This page checks every 5 minutes and shows today\'s buy as soon as it lands.') + (inZone && mult && mtpiPos === false && S.capital > 0 ? ' If you need to buy before then, the newest finished close (score ' + score.toFixed(3) + ', ' + mult.toFixed(2) + '×) gives ' + sdUSD(Math.min(Math.round(normal*mult), Math.round(remaining))) + '.' : '');
   else if(mtpiPos === null) reason = 'MTPI not loaded yet';
   else if(mtpiPos) reason = 'MTPI is positive (' + mt.v.toFixed(2) + '): SDCA is off — move everything into the RSPS';
   else if(brake === 'trigger') reason = 'Disaster brake: holdings are ' + (-bk.ddRef*100).toFixed(1) + '% below ' + (S.brake.resumed ? 'their value at the last resume (plus later buys)' : 'cost') + ' — sell half, then pause';
