@@ -47,13 +47,14 @@ const get = async (url, tries = 3) => {
 
 const latestClose = () => { const now = new Date(); const m = now.getUTCHours() * 60 + now.getUTCMinutes(); return new Date(m >= 23 * 60 + 15 ? now : now - 864e5).toISOString().slice(0, 10); };
 
-async function read() {
-  const cutoff = latestClose();   // ignore today's still-moving reading until checkonchain's end-of-day update (~23:13 UTC)
+// pages are downloaded once; build(cutoff) works out the scores using only days up to the cutoff
+const PAGES = {};
+async function read(cutoff) {
   const out = {v: 1, fetched: new Date().toISOString().slice(0, 16) + 'Z', ind: {}, errors: []};
   const ok = v => typeof v === 'number' && isFinite(v), last7 = {};
   for (const [id, path, trace, mode] of IND) {
     try {
-      const T = traces(await get(BASE + path + '_light.html?t=' + Date.now()));
+      const T = PAGES[id] || (PAGES[id] = traces(await get(BASE + path + '_light.html?t=' + Date.now())));
       const t = T.find(q => q.name === trace); if (!t) throw new Error('trace missing');
       const pt = T.find(q => q.name === 'Price' || q.name === 'Bitcoin Price');
       const pmap = {}; if (pt) for (let i = 0; i < pt.x.length; i++) if (ok(pt.y[i])) pmap[String(pt.x[i]).slice(0, 10)] = pt.y[i];
@@ -83,7 +84,23 @@ async function read() {
 const prev = (() => { try { return JSON.parse(fs.readFileSync('sdca_data.json', 'utf8')).data; } catch (e) { return null; } })();
 const want = latestClose();
 
-const d = await read();
+const dayBefore = x => new Date(Date.parse(x + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
+const priceOf = o => IND.map(r => o.ind[r[0]] && o.ind[r[0]][3]).find(x => x > 0);
+let d = await read(want), pending = null;
+// checkonchain posts each new day early in that day and only finalises it at its end-of-day update (usually ~23:13 UTC, sometimes hours later).
+// Until then that day's price is far from the Binance close, so use the day before and try again on the next run.
+const lateRange = async day => {   // BTC low/high over the last 3 hours of that UTC day (when checkonchain's end-of-day update normally runs)
+  const t0 = Date.parse(day + 'T21:00:00Z');
+  try { const k = JSON.parse(await get('https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=' + t0 + '&limit=3', 2)); if (k.length) return [Math.min(...k.map(r => +r[3])), Math.max(...k.map(r => +r[2]))]; } catch (e) {}
+  try { const c = JSON.parse(await get('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=3600&start=' + new Date(t0).toISOString() + '&end=' + new Date(t0 + 3 * 3600e3).toISOString(), 2)); if (c.length) return [Math.min(...c.map(r => r[1])), Math.max(...c.map(r => r[2]))]; } catch (e) {}
+  return null; };
+{ const p0 = priceOf(d);
+  if (d.asof && p0 && !d.errors.length) {
+    const rg = await lateRange(d.asof);
+    const final = rg ? (p0 >= rg[0] * 0.995 && p0 <= rg[1] * 1.005) : !(d.binClose && Math.abs(p0 / d.binClose - 1) > 0.015);
+    if (!final) {
+      pending = d.asof; console.log('checkonchain has not finalised ' + pending + ' yet (its price ' + p0 + ', BTC late-day range ' + (rg ? rg.map(Math.round).join('–') : 'n/a') + '); using the day before');
+      d = await read(dayBefore(pending)); } } }
 const ids = IND.map(r => r[0]);
 const problems = [];
 if (d.errors.length) problems.push('errors: ' + d.errors.join('; '));
@@ -96,9 +113,11 @@ const bottom = ids.every(id => d.ind[id]) ? ids.reduce((a, id) => a + d.ind[id][
 console.log(JSON.stringify({asof: d.asof, want, bottom: bottom && +bottom.toFixed(4), problems}));
 if (problems.length) { console.error('NOT saved: ' + problems.join(' | ')); process.exit(1); }
 if (prev && d.asof < prev.asof && !process.env.FORCE) { console.log('older than saved ' + prev.asof + '; keeping it'); process.exit(0); }
+if (pending && prev && d.asof === prev.asof && !process.env.FORCE) { console.log('waiting for checkonchain to finalise ' + pending + '; ' + prev.asof + ' already saved'); process.exit(0); }
 if (prev && d.asof === prev.asof && JSON.stringify(d.ind) === JSON.stringify(prev.ind) && JSON.stringify(d.hist) === JSON.stringify(prev.hist) && !process.env.FORCE) { console.log('no change for ' + d.asof); process.exit(0); }
 if (d.asof < want) console.log('note: checkonchain has not published ' + want + ' yet; saving ' + d.asof);
 
+if (pending) d.pending = pending;
 const feed = {data: d, sum: hash(JSON.stringify(d))};
 fs.writeFileSync('sdca_data.json', JSON.stringify(feed));
 fs.writeFileSync('sdca_data.js', 'window.SDCA_FEED = ' + JSON.stringify(feed) + ';\n');
