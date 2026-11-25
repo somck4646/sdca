@@ -1801,6 +1801,84 @@
         <div style="margin:12px 0 6px"><button class="rsps-btn ghost" id="lab-start-run">Run start-date test</button> <span class="pm-hint">reruns the full backtest from a start every ~2 months (same settings, to the same end date)</span></div>
         <div class="pm-tablewrap"><table class="pm-table" id="lab-starts"></table></div>
 
+        <div class="ts-sec">No-hindsight comparison <span>would the system have done this well if the coin lists had been chosen at the time, with only the information available then?</span></div>
+        <div class="pm-hint" style="margin:4px 0 8px;line-height:1.55">
+          <b>Hindsight</b> = the normal backtest: it uses <i>today's</i> coin lists for the whole history, so it "knew" years ago that coins like ZEC, HYPE and SUI would matter. <b>No hindsight</b> = every month the lists are rebuilt from all 701 Binance USDT pairs (including coins that were later delisted or collapsed), using only data up to the day before, with the written rules. Same engine and settings as the dashboard default, liquidity-based trading costs (0.12% BTC/ETH up to 0.7% for thin coins). Snapshot run on <span id="nh-asof"></span>; it does not change when you change settings above.</div>
+        <div class="pm-tablewrap"><table class="pm-table" id="nh-main"></table></div>
+        <div id="nh-chart" style="margin:10px 0 4px"></div>
+        <div class="pm-tablewrap"><table class="pm-table" id="nh-years"></table></div>
+        <div class="pm-tablewrap"><table class="pm-table" id="nh-rob"></table></div>
+        <div class="pm-hint" id="nh-notes" style="margin:8px 0 4px;line-height:1.55"></div>
+<script>
+(function(){
+  const NH = {
+    asof: '24 Nov 2026 (period 1 Jul 2021 – 24 Nov 2026)',
+    series: [
+      {k:'H', name:'Hindsight — today’s lists all the way back', col:'#a78bfa', dash:'5 4', m:[73.9,40.5,1.82,1.56,2.46,-30.0,269,60,-13,19.9], yr:[39,-23,128,123,115,70]},
+      {k:'F', name:'No hindsight — NEW High Beta rule', col:'var(--teal)', m:[61.4,45.6,1.35,1.27,1.37,-44.9,373,81,23,13.3], yr:[83,-28,198,75,-4,102]},
+      {k:'N', name:'No hindsight — old written rules', col:'#f0b429', m:[40.3,40.8,0.99,1.03,0.83,-48.8,785,62,22,6.2], yr:[74,-32,56,94,-5,83]},
+      {k:'B', name:'BTC buy and hold', col:'var(--text2)', m:[11.3,51.9,0.22,0.47,0.15,-76.6,847,100,100,1.79], yr:[38,-64,156,121,-6,-32]}],
+    d: '2021-07,2021-08,2021-09,2021-10,2021-11,2021-12,2022-01,2022-02,2022-03,2022-04,2022-05,2022-06,2022-07,2022-08,2022-09,2022-10,2022-11,2022-12,2023-01,2023-02,2023-03,2023-04,2023-05,2023-06,2023-07,2023-08,2023-09,2023-10,2023-11,2023-12,2024-01,2024-02,2024-03,2024-04,2024-05,2024-06,2024-07,2024-08,2024-09,2024-10,2024-11,2024-12,2025-01,2025-02,2025-03,2025-04,2025-05,2025-06,2025-07,2025-08,2025-09,2025-10,2025-11,2025-12,2026-01,2026-02,2026-03,2026-04,2026-05,2026-06,2026-07,2026-08,2026-09,2026-10,2026-11,2026-11',
+    v: {
+      H: '1,1.01,1.15,1.2,1.44,1.42,1.39,1.38,1.32,1.25,1.21,1.21,1.21,1.23,1.09,1.11,1.34,1.09,1.07,1.21,1.18,1.22,1.3,1.3,1.32,1.46,1.44,1.46,1.78,2.24,2.52,2.32,2.39,2.22,2.07,2.04,1.85,1.87,1.95,2.11,2.48,5.75,5.52,5.08,5.07,5.07,4.97,6.07,5.94,6.02,6.06,7.18,11.7,11.5,11.7,10.6,10.4,10.6,14.8,15.6,15.5,15.5,17,20.2,20.1,19.9',
+      N: '1,0.995,1.06,1.39,1.68,1.74,1.75,1.62,1.59,1.54,1.46,1.48,1.47,1.57,1.39,1.38,1.58,1.21,1.19,1.38,1.27,1.27,1.07,1.06,1.04,1.01,0.989,0.989,1.24,1.33,1.78,1.73,1.96,1.82,1.72,1.75,1.6,1.58,1.52,1.52,1.89,4.02,3.65,3.24,3.22,3.24,3.27,3.35,3.29,3.4,3.34,3.37,3.35,3.35,3.42,3.12,3.12,3.16,4.46,4.82,4.81,4.78,5.54,6.52,6.24,6.22',
+      F: '1,1,1.08,1.36,1.78,1.83,1.82,1.71,1.71,1.7,1.64,1.65,1.63,1.72,1.55,1.55,1.75,1.35,1.33,1.59,1.45,1.36,1.14,1.11,1.03,1.16,1.14,1.15,1.72,2.73,4.12,4.04,4.38,4.05,3.47,3.73,3.35,3.3,3.22,2.99,3.59,7.71,6.98,6.24,6.19,6.21,6.25,6.44,6.35,6.52,6.34,6.46,6.44,6.45,6.59,6.03,6.03,6.04,8.58,8.62,8.59,8.59,12.5,13.8,13.4,13.3',
+      B: '1,1.22,1.47,1.61,1.83,1.69,1.29,1.11,1.27,1.3,1.09,0.909,0.645,0.675,0.601,0.596,0.603,0.507,0.502,0.701,0.7,0.837,0.861,0.8,0.892,0.871,0.784,0.818,1.04,1.29,1.32,1.29,1.99,2.04,1.76,2.11,1.7,1.95,1.68,1.81,2.26,2.89,2.89,2.88,2.68,2.48,2.88,3.03,3.27,3.51,3.3,3.6,3.02,2.75,2.65,1.88,2.12,2,2.39,1.91,1.84,1.92,2.43,2.53,2.27,1.79'},
+    // robustness: [test, old rule CAGR/Sharpe/Calmar/MaxDD/RecDays, new rule ..., hindsight CAGR or null]
+    rob: [
+      ['Full period (Jul-2021 →)', [40.3,1.03,0.83,-48.8,785], [61.4,1.27,1.37,-44.9,373], 73.9],
+      ['1st half (Jul-2021 → Mar-2024)', [27.1,0.82,0.55,-48.8,785], [74.9,1.46,1.67,-44.9,373], 37.5],
+      ['2nd half (Mar-2024 →)', [52.3,1.18,1.29,-40.4,522], [49.4,1.10,1.26,-39.3,247], 118.8],
+      ['Start Jan-2022 (bear market start)', [29.7,0.85,0.64,-46.2,698], [49.8,1.11,1.11,-44.9,373], 72.0],
+      ['Start 22-Feb-2023', [52.5,1.20,1.30,-40.4,522], [76.4,1.42,1.93,-39.7,247], 111.1],
+      ['Yearly instead of half-year chunks', [37.9,0.99,0.75,-50.3,788], [58.9,1.24,1.24,-47.4,745], null],
+      ['Flat 0.1% costs instead of liquidity costs', [41.5,1.05,0.87,-47.9,781], [62.3,1.29,1.40,-44.7,372], 74.9],
+      ['New rule, no buffer (strict top 14)', null, [55.2,1.19,1.01,-54.5,745], null],
+      ['New rule, buffer of 4', null, [60.8,1.26,1.35,-44.9,373], null],
+      ['New rule, top 10 coins', null, [60.0,1.25,1.31,-45.9,744], null],
+      ['New rule, top 20 coins', null, [67.7,1.37,1.49,-45.3,683], null],
+      ['New rule, reviewed quarterly not monthly', null, [46.7,1.08,0.85,-55.0,750], null],
+      ['New rule, $25M floor', null, [67.0,1.37,1.47,-45.6,454], null],
+      ['New rule, $60M floor', null, [63.4,1.27,1.37,-46.3,374], null],
+      ['New rule, 90-day history floor', null, [62.3,1.27,1.27,-48.9,744], null],
+      ['New rule, 30-day history floor', null, [64.6,1.30,1.47,-43.8,742], null],
+      ['No High Beta at all', null, [37.3,0.88,0.52,-71.4,778], null]]
+  };
+  const $ = id => document.getElementById(id);
+  const pc = x => (x > 0 ? '+' : '') + x + '%';
+  function render(){
+    if(!$('nh-main')) return;
+    $('nh-asof').textContent = NH.asof;
+    const H = ['CAGR','Volatility','Return ÷ vol','Sharpe','Calmar','Max drawdown','Days to recover max DD','Upside capture vs BTC','Downside capture vs BTC','Growth of $1'];
+    $('nh-main').innerHTML = '<thead><tr><th class="l">Version</th>' + H.map(h => '<th>'+h+'</th>').join('') + '</tr></thead><tbody>'
+      + NH.series.map(s => '<tr><td class="l"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:'+s.col+'"></span>'+(s.k === 'F' ? '<b>'+s.name+'</b>' : s.name)+'</td>'
+        + s.m.map((x, i) => '<td>'+(i === 0 ? x.toFixed(1)+'%' : i === 1 ? x.toFixed(1)+'%' : i === 5 ? x.toFixed(1)+'%' : i === 6 ? x+' d' : i === 7 || i === 8 ? x+'%' : i === 9 ? '$'+x : x.toFixed(2))+'</td>').join('') + '</tr>').join('') + '</tbody>';
+    // chart (log scale)
+    const D = NH.d.split(','), n = D.length, W = 760, Ht = 250, L = 44, R = 12, T = 12, Bm = 26;
+    const V = {}; for(const k in NH.v) V[k] = NH.v[k].split(',').map(Number);
+    const lo = Math.log(0.4), hi = Math.log(25), sx = i => L + i * (W - L - R) / (n - 1), sy = v => T + (hi - Math.log(v)) / (hi - lo) * (Ht - T - Bm);
+    let g = '<svg viewBox="0 0 '+W+' '+Ht+'" style="width:100%;height:auto;display:block" role="img" aria-label="Growth of $1, log scale">';
+    for(const t of [0.5,1,2,5,10,20]) g += '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+sy(t)+'" y2="'+sy(t)+'" stroke="var(--border2)" stroke-width="'+(t === 1 ? 1.2 : 0.6)+'"/><text x="'+(L-6)+'" y="'+(sy(t)+4)+'" text-anchor="end" font-size="11" fill="var(--text2)">$'+t+'</text>';
+    D.forEach((d, i) => { if(d.slice(5) === '01' && (i === 0 || D[i-1] !== d)) g += '<text x="'+sx(i)+'" y="'+(Ht-8)+'" text-anchor="middle" font-size="11" fill="var(--text2)">'+d.slice(0,4)+'</text>'; });
+    for(const s of NH.series.slice().reverse()) g += '<polyline fill="none" stroke="'+s.col+'" stroke-width="'+(s.k === 'F' ? 2.4 : 1.6)+'"'+(s.dash ? ' stroke-dasharray="'+s.dash+'"' : '')+' points="'+V[s.k].map((v, i) => sx(i).toFixed(1)+','+sy(v).toFixed(1)).join(' ')+'"/>';
+    for(const s of NH.series){ const v = V[s.k][n-1]; g += '<text x="'+(W-R-2)+'" y="'+(sy(v)-5)+'" text-anchor="end" font-size="11" font-weight="600" fill="'+s.col+'">$'+v+'</text>'; }
+    g += '</svg><div class="pm-hint" style="text-align:center">Growth of $1, log scale · purple dashed = hindsight · teal = new rule · amber = old rules · grey = BTC</div>';
+    $('nh-chart').innerHTML = g;
+    const Y = ['2021 (from Jul)','2022','2023','2024','2025','2026 (to 24 Nov)'];
+    $('nh-years').innerHTML = '<thead><tr><th class="l">Calendar-year return</th>' + Y.map(y => '<th>'+y+'</th>').join('') + '</tr></thead><tbody>'
+      + NH.series.map(s => '<tr><td class="l">'+s.name+'</td>' + s.yr.map(x => '<td style="color:'+(x >= 0 ? 'var(--green)' : 'var(--red)')+'">'+pc(x)+'</td>').join('') + '</tr>').join('') + '</tbody>';
+    const cell = a => a ? '<td>'+a[0].toFixed(1)+'%</td><td>'+a[1].toFixed(2)+'</td><td>'+a[2].toFixed(2)+'</td><td>'+a[3].toFixed(1)+'%</td><td>'+a[4]+' d</td>' : '<td colspan="5" class="pm-hint">—</td>';
+    $('nh-rob').innerHTML = '<thead><tr><th class="l" rowspan="2">Robustness test (no hindsight)</th><th colspan="5">Old written rules</th><th colspan="5">New High Beta rule</th><th rowspan="2">Hindsight CAGR</th></tr><tr><th>CAGR</th><th>Sharpe</th><th>Calmar</th><th>Max DD</th><th>Recover</th><th>CAGR</th><th>Sharpe</th><th>Calmar</th><th>Max DD</th><th>Recover</th></tr></thead><tbody>'
+      + NH.rob.map(r => '<tr><td class="l">'+r[0]+'</td>'+cell(r[1])+cell(r[2])+'<td>'+(r[3] != null ? r[3].toFixed(1)+'%' : '—')+'</td></tr>').join('') + '</tbody>';
+    $('nh-notes').innerHTML = '<b>How to read this.</b> The hindsight backtest overstates what was achievable: about 74% a year versus 40% with the old written rules applied at the time. The gap is coin selection (knowing about ZEC and HYPE in 2025, INJ in 2023), not dead coins — leaving delisted coins out did not close it. '
+      + 'The <b>new High Beta rule</b> (6+ months on Binance, $40M+ a day of 90-day average trading, top 14 by volume, buffer 2, monthly) closes about two-thirds of that gap: 61% a year, Calmar 1.37, recovery from the worst drawdown in 373 days instead of 785, and it beat the old rules in every test except the second half on its own, where it roughly matched them. '
+      + 'Why it works: the volume floor makes High Beta <b>expand in liquid bull markets</b> (12–15 coins in 2021, 2024, 2025) and <b>shrink to 2–4 coins in quiet markets</b> (2023, late 2026), so the system does not spread money across thin coins that are going nowhere. Dropping High Beta entirely is much worse (−71% drawdown), so the breadth matters when it is there. '
+      + '<b>Caveats:</b> a lot of the edge came in 2023 (+198% vs +56%); from March 2024 on, the new rule matched the old rules on return (49% vs 52%) while recovering from its drawdown twice as fast. Reviewing quarterly instead of monthly gave much of the edge back, so do the monthly review. Volume is Binance spot only, so coins not on Binance spot (e.g. HYPE) cannot be screened. Expect live results nearer the no-hindsight numbers than the hindsight ones.';
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render); else render();
+})();
+</script>
+
         <div class="ts-sec">Weekly system health check <span>checks the data feed, the MTPI, that the backtest and the live allocation agree, your settings and the Balanced backtest against its stored result. Run it once a week; anything marked FAIL needs attention before you trade.</span></div>
         <div style="margin:8px 0"><button class="rsps-btn ghost" id="lab-hc-run">Run health check</button> <span class="pm-hint" id="lab-hc-note"></span></div>
         <div class="pm-tablewrap"><table class="pm-table" id="lab-hc-tab"></table></div>
@@ -2241,19 +2319,20 @@
   <div id="lst-due-page"></div>
   <div class="card-title">ASSET LISTS — RULES CHECK &amp; MONTHLY REVIEW</div>
   <div class="lst-rules">
-    <p>Every coin is checked against the written rules each time prices load. Once a month the review is recorded, the watchlist is rebuilt from the leading themes and the coins drawing the most trading on Binance, and a reminder shows until you mark the review done. <b>Nothing changes the live lists automatically</b> — you approve each move.</p>
+    <p>Every coin is checked against the written rules each time prices load. Once a month the review is recorded, the High Beta rule screen ranks every Binance coin by trading volume, and a reminder shows until you mark the review done. <b>Nothing changes the live lists automatically</b> — you approve each move.</p>
     <ul>
       <li><b>Majors</b> (BTC, ETH, SOL, PAXG): fixed.</li>
       <li><b>Alts</b>: market cap top 30 · 90-day average trading of $50M+ a day · 2+ years of history · sector leader (#1–2 by volume in its theme) · no more than 2 coins per theme.</li>
-      <li><b>High Beta</b>: market cap top 150 · $3M+ a day · 12+ months of history · no more than 2 coins per theme.</li>
-      <li><b>Upgrade High Beta → Alts</b>: meets the Alts rules, leads its theme, 90-day return vs BTC in the top third of High Beta. <b>Downgrade Alts → High Beta</b>: fails an Alts rule. <b>Add from the watchlist</b>: meets the High Beta rules, its theme has room, and High Beta has fewer than 16 coins (the best-scored candidates go first: trading volume, return vs BTC, rising volume, bonus for a leading theme). <b>Remove from High Beta</b>: fails a High Beta rule.</li>
-      <li>A suggestion is <b>confirmed</b> when it appears in two monthly reviews in a row. Make at most <b>3 changes per quarter</b>, at the quarterly review (Jan, Apr, Jul, Oct), after testing each in Backtest Lab → Robustness lab.</li>
+      <li><b>High Beta (rule-based, set monthly)</b>: every Binance USDT coin that is not a major, an Alt, a stablecoin, a wrapped or leveraged token · <b>6+ months (180 days) of Binance history</b> · <b>90-day average Binance trading of $40M+ a day</b> · ranked by that volume · the <b>top 14</b> are in · a coin already in stays while it ranks in the <b>top 16</b> (buffer of 2). In quiet markets this can be only a few coins — that is intended. "Re-check now" runs the screen (about 30–60 seconds).</li>
+      <li><b>Why this rule</b>: it is the only list rule tested without hindsight (coins chosen each month using only data available then, including coins that later died). It beat the old High Beta rule over the full period and in nearly every robustness test — see Backtest Lab → No-hindsight comparison.</li>
+      <li><b>Upgrade High Beta → Alts</b>: meets the Alts rules, leads its theme, 90-day return vs BTC in the top third of High Beta. <b>Downgrade Alts → High Beta</b>: fails an Alts rule.</li>
+      <li><b>High Beta adds and removes are made at each monthly review</b>, as the rule list says (that is how it was tested; no two-month wait). Alts changes still need to show up in two monthly reviews in a row, at most <b>3 per quarter</b>, at the quarterly review (Jan, Apr, Jul, Oct), after testing each in Backtest Lab → Robustness lab.</li>
       <li><b>Red flags act immediately</b>: no new price for 3+ days (possible delisting), 30-day volume below 20% of its 90-day average, or a fall of 60%+ from the 30-day high. Also remove at once on a hack or a broken peg.</li>
       <li>Never add a coin because it just ran — the RSPS already reacts to price every day; the lists only decide who may compete.</li>
     </ul>
   </div>
   <div class="lst-ctl"><button class="rsps-btn ghost" onclick="RSPS.lists.update(true)">Re-check now</button>
-    <label>Pin a coin to the watchlist <input id="lst-pin" placeholder="e.g. TON"></label> <button class="rsps-btn ghost" onclick="RSPS.lists.pin()">Pin</button>
+    <label>Track a coin <input id="lst-pin" placeholder="e.g. TON"></label> <button class="rsps-btn ghost" onclick="RSPS.lists.pin()">Pin</button>
     <button class="rsps-btn" onclick="RSPS.lists.done()">Mark this month reviewed</button></div>
   <div id="lst-out"><div class="pm-hint">Loads after the RSPS prices…</div></div>
 </div>
@@ -9281,7 +9360,7 @@ async function robRunAbs(){
    Nothing here changes the live lists: upgrades and downgrades are suggestions you approve. */
 const LST_RULES = {
   alts: {minAge: 730, minDv: 50e6, maxRank: 30, perTheme: 2},
-  hb:   {minAge: 365, minDv: 3e6,  maxRank: 150, perTheme: 2},
+  hb:   {minAge: 180, minDv: 40e6, maxRank: null, perTheme: null, n: 14, buf: 2},   // Nov-2026: rule-based High Beta (point-in-time backtest: CAGR 40% → 61%, Calmar 0.83 → 1.37)
   maxChangesPerQuarter: 3, confirmMonths: 2, hbMax: 16
 };
 const LST_THEMES = {BTC:'Store of value', ETH:'Smart-contract L1', SOL:'Smart-contract L1', PAXG:'Gold', BNB:'Exchange', XRP:'Payments', TRX:'Payments', XLM:'Payments', LTC:'Payments', BCH:'Payments',
@@ -9290,6 +9369,7 @@ const LST_THEMES = {BTC:'Store of value', ETH:'Smart-contract L1', SOL:'Smart-co
   INJ:'DeFi', AAVE:'Lending', MORPHO:'Lending', SKY:'Lending', UNI:'DEX', JUP:'DEX', CAKE:'DEX', RAY:'DEX', CRV:'DEX', PENDLE:'Yield', ENA:'Stablecoin / yield', ETHFI:'Restaking', EIGEN:'Restaking', LDO:'Restaking',
   TAO:'AI', RENDER:'AI', FET:'AI', WLD:'AI', VIRTUAL:'AI', ZROL:'Interoperability', ZRO:'Interoperability', QNT:'Interoperability', ARB:'Layer 2', OP:'Layer 2', POL:'Layer 2', STRK:'Layer 2', FIL:'DePIN', AR:'DePIN', GRT:'Data', JTO:'Staking', STX:'Bitcoin L2'};
 const LST_SKIP = /^(USDT|USDC|FDUSD|TUSD|BUSD|DAI|USDP|USDE|USD1|RLUSD|EUR|EURI|AEUR|TRY|BRL|GBP|JPY|WBTC|WBETH|BETH|BFUSD|XUSD|PAXG|BTC|ETH|SOL|BNSOL|STETH|WSTETH)$/;
+const LST_NOT_COIN = /^(XAUT|U|USDD|PYUSD|EURC|(SNDK|NVDA|SOXL|SOXS|SPCX|CRCL|MU|GOOGL|TSLA|AAPL|MSFT|AMZN|META|COIN|MSTR|HOOD|QQQ|SPY|AMD|NFLX|PLTR|ORCL|AVGO|TQQQ|SQQQ|IBIT|GLD|SLV)B?)$/;   // tokenised stocks / gold / stablecoins: not crypto coins
 const LST_SEED_WATCH = ['TRX','MORPHO','ASTER','WLD','ARB','ETHFI'];
 const LST_KEY = 'mtpi_lists_v1';
 const LST = {px:{}, mcap:null, busy:false, res:null};
@@ -9329,11 +9409,35 @@ async function lstDiscover(exclude){                        // monthly: the most
       .filter(x => !LST_SKIP.test(x.a) && !/(UP|DOWN|BULL|BEAR)$/.test(x.a) && !exclude.includes(x.a) && x.qv > 0).sort((x,y) => y.qv - x.qv).slice(0, 20).map(x => x.a);
   }catch(e){ return []; }
 }
+async function lstScreen(alts, hb){                          // High Beta rule: Binance USDT coins 180+ days old, 90-day average volume ≥ $40M, ranked by that volume, top 14 (+2 buffer for coins already in)
+  const R = LST_RULES.hb, td = Date.parse(new Date().toISOString().slice(0,10)+'T00:00:00Z');
+  const sym = a => (SRC[a] && SRC[a].binance) || a+'USDT', back = {};
+  const tk = await (await fetch('https://data-api.binance.vision/api/v3/ticker/24hr')).json(); if(!Array.isArray(tk)) throw new Error('Binance ticker not available');
+  const onBin = new Set(tk.map(t => t.symbol));
+  const skip = a => LST_SKIP.test(a) || LST_NOT_COIN.test(a) || /USD|EUR/.test(a) || /(UP|DOWN|BULL|BEAR)$/.test(a) || MAJORS.includes(a) || alts.includes(a);
+  const pool = tk.filter(t => /USDT$/.test(t.symbol) && +t.quoteVolume >= R.minDv * 0.25).map(t => t.symbol.slice(0, -4)).filter(a => !skip(a));
+  for(const a of hb){ back[sym(a)] = a; }
+  const syms = [...new Set(pool.map(a => a+'USDT').concat(hb.map(sym).filter(s => onBin.has(s))))];
+  const info = {}; let k = 0;
+  const one = async s => { try{ const d = await (await fetch('https://data-api.binance.vision/api/v3/klines?symbol='+s+'&interval=1d&limit=200')).json(); if(!Array.isArray(d)) return;
+      const rows = d.filter(c => c[0] < td); if(rows.length < 30) return; let gap = rows.length;            // age counts from the first day after any 5+ day gap (relisting)
+      for(let i = rows.length - 1; i > 0; i--) if(rows[i][0] - rows[i-1][0] > 5 * 864e5){ gap = rows.length - i; break; }
+      const last = rows.slice(-90), dv = last.reduce((x, c) => x + +c[7], 0) / 90;
+      info[back[s] || s.slice(0, -4)] = {age: gap, full: gap === rows.length && d.length >= 200, dv90: dv}; }catch(e){} };
+  const q = syms.slice(); await Promise.all(Array.from({length: 8}, async () => { while(q.length){ await one(q.shift()); k++; } }));
+  const elig = Object.entries(info).filter(([a, x]) => x.age >= R.minAge && x.dv90 >= R.minDv && !skip(a)).sort((x, y) => y[1].dv90 - x[1].dv90);
+  const rank = {}; elig.forEach(([a], i) => rank[a] = i + 1);
+  const keep = hb.filter(a => rank[a] && rank[a] <= R.n + R.buf); for(const [a] of elig){ if(rank[a] > R.n) break; if(!keep.includes(a)) keep.push(a); }
+  const target = keep.sort((x, y) => rank[x] - rank[y]);
+  const why = {}; for(const a of hb){ if(target.includes(a)) continue; const x = info[a];
+    why[a] = !onBin.has(sym(a)) ? 'not traded on Binance spot' : !x ? 'no Binance price data' : x.age < R.minAge ? 'only '+x.age+' days of history (needs '+R.minAge+')' : x.dv90 < R.minDv ? '90-day volume $'+lstFmt(x.dv90)+' < $'+lstFmt(R.minDv) : 'ranked #'+rank[a]+' by volume (keeps its place only while in the top '+(R.n + R.buf)+')'; }
+  return {at: new Date().toISOString(), target, rank, info: Object.fromEntries(Object.entries(info).filter(([a]) => rank[a] || hb.includes(a))), why, add: target.filter(a => !hb.includes(a)), remove: hb.filter(a => !target.includes(a)), screened: syms.length, eligible: elig.length};
+}
 function lstCheck(a, M, rules, rank){                       // which rules a coin fails
   const f = []; if(!M) return ['no price data'];
   if(M.age < rules.minAge) f.push('history '+Math.floor(M.age/30)+' mo < '+Math.round(rules.minAge/30)+' mo');
   if(M.dv90 < rules.minDv) f.push('90-day volume $'+lstFmt(M.dv90)+' < $'+lstFmt(rules.minDv));
-  if(rank != null && rank > rules.maxRank) f.push('market cap #'+rank+' > #'+rules.maxRank);
+  if(rank != null && rules.maxRank && rank > rules.maxRank) f.push('market cap #'+rank+' > #'+rules.maxRank);
   return f;
 }
 function lstRed(M){                                          // red flags: act immediately, no waiting
@@ -9350,12 +9454,13 @@ async function lstUpdate(force){
   try{
     const st = lstLoad(), month = lstMonth(); const newMonth = st.month !== month;
     const alts = MAIN_FIXED.filter(a => !MAJORS.includes(a)), hb = HB_POOL.slice();
-    let watch = (st.watch && st.watch.length ? st.watch : LST_SEED_WATCH).filter(a => !alts.includes(a) && !hb.includes(a));
     const pinned = st.pinned || [];
-    // monthly: refresh the watchlist from trading attention + leading themes
-    let discovered = st.discovered || [];
-    if(newMonth || force){ const d = await lstDiscover(alts.concat(hb, MAJORS, watch, pinned)); if(d.length) discovered = d; }
-    const all = [...new Set(alts.concat(hb, watch, pinned, discovered))];
+    // monthly: the High Beta rule screen (all Binance USDT coins, ranked by 90-day average volume)
+    let scr = st.screen && st.screen.month === month ? st.screen : null, scrErr = null;
+    if(newMonth || force || !scr){ try{ scr = await lstScreen(alts, hb); scr.month = month; }catch(e){ scrErr = e.message; console.warn('screen', e); if(st.screen) scr = st.screen; } }
+    let watch = scr ? scr.add.filter(a => !alts.includes(a) && !hb.includes(a)) : [];
+    const discovered = [];
+    const all = [...new Set(alts.concat(hb, watch, pinned))];
     const M = {}; await Promise.all(all.map(async a => { try{ M[a] = lstMetrics(await lstFetchRows(a)); }catch(e){ M[a] = null; } }));
     const btc = PRICES && PRICES.BTC ? lstMetrics(PRICES.BTC) : null;
     const rs = a => (M[a] && btc && isFinite(M[a].r90)) ? (1+M[a].r90)/(1+btc.r90) - 1 : NaN;     // 90-day return vs BTC
@@ -9369,7 +9474,6 @@ async function lstUpdate(force){
     const rkBy = (arr, f) => { const s = arr.slice().sort((x,y) => f(y) - f(x)); const o = {}; s.forEach((a,i) => o[a] = i+1); return o; };
     const rV = rkBy(cands, a => M[a].dv90), rR = rkBy(cands, a => isFinite(rs(a)) ? rs(a) : -9), rG = rkBy(cands, a => M[a].dv90 > 0 ? M[a].dv30/M[a].dv90 : 0);
     const att = {}; for(const a of cands) att[a] = (rV[a] + rR[a] + rG[a])/3 - (lead.includes(lstTheme(a)) ? 2 : 0);
-    if(newMonth || force){ watch = [...new Set(pinned.concat(cands.filter(a => !lstCheck(a, M[a], LST_RULES.hb, rk(a)).length).sort((x,y) => att[x] - att[y])))].slice(0, 8); }
     // rule status per coin
     const cnt = (list, t) => list.filter(x => lstTheme(x) === t).length;
     const themeLeader = a => { const t = lstTheme(a); const peers = all.filter(x => lstTheme(x) === t && M[x]).sort((x,y) => M[y].dv90 - M[x].dv90); return peers.indexOf(a) >= 0 && peers.indexOf(a) < 2; };
@@ -9377,10 +9481,12 @@ async function lstUpdate(force){
     const rows = [];
     for(const a of alts){ const fail = lstCheck(a, M[a], LST_RULES.alts, rk(a)); if(cnt(alts, lstTheme(a)) > LST_RULES.alts.perTheme) fail.push('more than 2 '+lstTheme(a)+' coins in Alts');
       rows.push({a, grp:'Alts', fail, red: lstRed(M[a]), act: fail.length ? 'downgrade' : null}); }
-    for(const a of hb){ const fail = lstCheck(a, M[a], LST_RULES.hb, rk(a)); const up = !fail.length && !lstCheck(a, M[a], LST_RULES.alts, rk(a)).length && themeLeader(a) && rs(a) >= topThird && cnt(alts, lstTheme(a)) < LST_RULES.alts.perTheme;
+    const hbFail = a => scr ? (scr.target.includes(a) ? [] : [scr.why[a] || 'not in the High Beta rule list']) : lstCheck(a, M[a], LST_RULES.hb, rk(a));
+    for(const a of hb){ const fail = hbFail(a); const up = !fail.length && !lstCheck(a, M[a], LST_RULES.alts, rk(a)).length && themeLeader(a) && rs(a) >= topThird && cnt(alts, lstTheme(a)) < LST_RULES.alts.perTheme;
       rows.push({a, grp:'High Beta', fail, red: lstRed(M[a]), act: fail.length ? 'remove' : up ? 'upgrade' : null}); }
-    for(const a of watch){ const fail = lstCheck(a, M[a], LST_RULES.hb, rk(a)); const ok = !fail.length && cnt(hb, lstTheme(a)) < LST_RULES.hb.perTheme;
-      rows.push({a, grp:'Watchlist', fail: ok ? [] : fail.concat(!fail.length ? ['already 2 '+lstTheme(a)+' coins in High Beta'] : []), red: lstRed(M[a]), act: ok ? 'add' : null}); }
+    for(const a of watch){ rows.push({a, grp:'Rule screen', fail: [], red: lstRed(M[a]), act: 'add', note: 'ranked #'+scr.rank[a]+' by 90-day Binance volume ($'+lstFmt(scr.info[a].dv90)+' a day)'}); }
+    for(const a of pinned){ if(alts.includes(a) || hb.includes(a) || watch.includes(a)) continue; const fail = lstCheck(a, M[a], LST_RULES.hb, rk(a)); if(!fail.length && scr && !scr.target.includes(a)) fail.push('meets the floors but is not in the top '+LST_RULES.hb.n+' by volume');
+      rows.push({a, grp:'Pinned', fail, red: lstRed(M[a]), act: null}); }
     // High Beta keeps 12–16 coins: only the best-scored watchlist coins get an "add" while there is room
     const room = Math.max(0, LST_RULES.hbMax - hb.length + rows.filter(r => r.act === 'remove').length);
     rows.filter(r => r.act === 'add').sort((x,y) => (att[x.a] ?? 99) - (att[y.a] ?? 99)).forEach((r, i) => { if(i >= room){ r.act = null; r.fail = ['meets the rules — High Beta is full ('+LST_RULES.hbMax+'); next in line if a coin leaves']; } });
@@ -9388,10 +9494,10 @@ async function lstUpdate(force){
     const hist = st.hist || {};
     if(newMonth || force){ for(const r of rows){ const k = r.grp+':'+r.a; const h = (hist[k] || []).filter(x => x.m !== month); if(r.act) h.push({m: month, act: r.act}); hist[k] = h.slice(-3); } }
     const prevM = (() => { const d = new Date(month+'-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth()-1); return d.toISOString().slice(0,7); })();
-    for(const r of rows){ const h = hist[r.grp+':'+r.a] || []; r.confirmed = !!r.act && h.some(x => x.m === prevM && x.act === r.act) && h.some(x => x.m === month && x.act === r.act); }
-    const s2 = Object.assign(st, {month, watch, discovered, pinned, hist, themes: themes.slice(0, 8), checkedAt: new Date().toISOString(), reviewedMonth: newMonth ? (st.reviewedMonth || null) : st.reviewedMonth});
+    for(const r of rows){ const h = hist[r.grp+':'+r.a] || []; r.rule = r.act === 'add' || r.act === 'remove'; r.confirmed = r.rule || !!r.act && h.some(x => x.m === prevM && x.act === r.act) && h.some(x => x.m === month && x.act === r.act); }
+    const s2 = Object.assign(st, {month, watch, discovered, pinned, hist, screen: scr, themes: themes.slice(0, 8), checkedAt: new Date().toISOString(), reviewedMonth: newMonth ? (st.reviewedMonth || null) : st.reviewedMonth});
     lstSave(s2);
-    LST.res = {rows, M, rs, themes, lead, att, mc: !!mc, month, reviewed: s2.reviewedMonth === month, watch, discovered};
+    LST.res = {rows, M, rs, themes, lead, att, mc: !!mc, month, reviewed: s2.reviewedMonth === month, watch, discovered, scr, scrErr, hb};
     lstRender(); lstRenderReminder();
   }catch(e){ console.warn('lists', e); }
   finally{ LST.busy = false; }
@@ -9401,19 +9507,28 @@ function lstRender(){
   const pc = x => isFinite(x) ? (x >= 0 ? '+' : '')+Math.round(x*100)+'%' : '—';
   const actTxt = {downgrade:'▼ downgrade to High Beta', remove:'✕ remove from High Beta', upgrade:'▲ upgrade to Alts', add:'＋ add to High Beta'};
   const tested = {NEAR:'tested Nov-2026: moving NEAR to Alts lowered Martin 18.5 → 14.2', TRX:'tested Nov-2026: TRX instead of SUI lowered Martin; adding it alongside was +0.3 (unproven)', MORPHO:'tested Nov-2026: MORPHO instead of RENDER lowered Martin', ASTER:'tested Nov-2026: ASTER instead of RENDER +0.9 Martin, fails 3 checks (unproven)', WLD:'tested Nov-2026: WLD instead of RENDER lowered Martin', ARB:'tested Nov-2026: ARB instead of RENDER no better', ETHFI:'tested Nov-2026: ETHFI instead of RENDER lowered Martin'};
-  const row = r => { const m = R.M[r.a]; const act = r.act ? '<span style="color:'+(r.act === 'upgrade' || r.act === 'add' ? 'var(--green)' : 'var(--red)')+';font-weight:600">'+actTxt[r.act]+'</span>'+(r.confirmed ? ' <b>· confirmed 2 months</b>' : ' <span class="pm-hint">· month 1 of 2</span>') : (r.fail.length ? '' : '<span class="pm-hint">meets the rules</span>');
-    return '<tr><td class="l"><b>'+r.a+'</b></td><td class="l">'+r.grp+'</td><td class="l">'+lstTheme(r.a)+'</td><td>'+(m ? '$'+lstFmt(m.dv90) : '—')+'</td><td>'+(m ? (m.age >= 730 ? Math.floor(m.age/365)+' y' : Math.floor(m.age/30)+' mo') : '—')+'</td><td>'+(m ? Math.round(m.vol*100)+'%' : '—')+'</td><td>'+pc(R.rs(r.a))+'</td><td class="l" style="white-space:normal;min-width:200px">'+act+(r.fail.length ? '<div class="pm-hint">'+r.fail.join('; ')+'</div>' : '')+(r.red.length ? '<div style="color:var(--red)">⚠ '+r.red.join('; ')+'</div>' : '')+(r.act && tested[r.a] ? '<div class="pm-hint">'+tested[r.a]+'</div>' : '')+(r.act ? '<div class="pm-hint">Before adopting: Backtest Lab → Robustness lab → test the move.</div>' : '')+'</td></tr>'; };
+  const row = r => { const m = R.M[r.a]; const act = r.act ? '<span style="color:'+(r.act === 'upgrade' || r.act === 'add' ? 'var(--green)' : 'var(--red)')+';font-weight:600">'+actTxt[r.act]+'</span>'+(r.rule ? ' <b>· monthly rule: make this change at this review</b>' : r.confirmed ? ' <b>· confirmed 2 months</b>' : ' <span class="pm-hint">· month 1 of 2</span>') : (r.fail.length ? '' : '<span class="pm-hint">meets the rules</span>');
+    return '<tr><td class="l"><b>'+r.a+'</b></td><td class="l">'+r.grp+'</td><td class="l">'+lstTheme(r.a)+'</td><td>'+(m ? '$'+lstFmt(m.dv90) : '—')+'</td><td>'+(m ? (m.age >= 730 ? Math.floor(m.age/365)+' y' : Math.floor(m.age/30)+' mo') : '—')+'</td><td>'+(m ? Math.round(m.vol*100)+'%' : '—')+'</td><td>'+pc(R.rs(r.a))+'</td><td class="l" style="white-space:normal;min-width:200px">'+act+(r.note ? '<div class="pm-hint">'+r.note+'</div>' : '')+(r.fail.length ? '<div class="pm-hint">'+r.fail.join('; ')+'</div>' : '')+(r.red.length ? '<div style="color:var(--red)">⚠ '+r.red.join('; ')+'</div>' : '')+(r.act && tested[r.a] ? '<div class="pm-hint">'+tested[r.a]+'</div>' : '')+(r.act && !r.rule ? '<div class="pm-hint">Before adopting: Backtest Lab → Robustness lab → test the move.</div>' : '')+'</td></tr>'; };
   const sugg = R.rows.filter(r => r.act), conf = sugg.filter(r => r.confirmed), red = R.rows.filter(r => r.red.length);
   el.innerHTML = '<div class="lst-sum">'
     + '<div><b>Leading themes (90-day return vs BTC):</b> '+(R.themes.slice(0,5).map((t,i) => (i < 3 ? '<b>' : '')+t.t+' '+pc(t.rs)+(i < 3 ? '</b>' : '')).join(' · ') || '—')+'</div>'
     + '<div><b>This month:</b> '+(conf.length ? conf.length+' confirmed change'+(conf.length>1?'s':'')+' ready to approve' : 'no confirmed changes')+' · '+(sugg.length - conf.length)+' in month 1 of 2'+(red.length ? ' · <span style="color:var(--red)">'+red.length+' red flag'+(red.length>1?'s':'')+'</span>' : '')+'</div>'
-    + '<div class="pm-hint">Checked '+new Date().toLocaleString('en-AU')+(R.mc ? ' · market-cap ranks from CoinGecko' : ' · market-cap rank not available here (volume and history checked)')+' · watchlist refreshed for '+R.month+' from '+(R.discovered.length ? 'the 20 most-traded Binance coins not yet tracked' : 'the seed list')+' and the leading themes.</div></div>'
+    + lstScreenHtml(R)
+    + '<div class="pm-hint">Checked '+new Date().toLocaleString('en-AU')+(R.mc ? ' · market-cap ranks from CoinGecko (used for Alts only)' : '')+'.</div></div>'
     + '<div class="pm-tablewrap"><table class="pm-table"><thead><tr><th class="l">Coin</th><th class="l">Group</th><th class="l">Theme</th><th>90-day $ volume</th><th>History</th><th>90-day vol</th><th>90-day vs BTC</th><th class="l">Rules check</th></tr></thead><tbody>'
     + R.rows.map(row).join('') + '</tbody></table></div>';
 }
+function lstScreenHtml(R){
+  const S = R.scr; if(!S) return '<div style="color:var(--red)"><b>High Beta rule screen could not run</b>'+(R.scrErr ? ' ('+R.scrErr+')' : '')+' — press "Re-check now" to try again.</div>';
+  const keep = S.target.filter(a => R.hb.includes(a)), t = new Date(S.at).toLocaleString('en-AU');
+  return '<div style="margin-top:6px"><b>High Beta rule list for '+S.month+'</b> ('+S.target.length+' coin'+(S.target.length === 1 ? '' : 's')+', ranked by 90-day Binance volume): '+(S.target.map(a => '<b>'+a+'</b> $'+lstFmt(S.info[a].dv90)).join(' · ') || 'none qualify')+'</div>'
+    + '<div>Keep: '+(keep.join(', ') || '—')+' · <span style="color:var(--green)">Add: '+(S.add.join(', ') || '—')+'</span> · <span style="color:var(--red)">Remove: '+(S.remove.join(', ') || '—')+'</span></div>'
+    + (S.target.length < 6 ? '<div class="pm-hint">Fewer coins than usual: in quiet markets few coins trade $'+lstFmt(LST_RULES.hb.minDv)+'+ a day, so High Beta shrinks (the backtest held 2–4 coins through 2023 and late 2026, and 12–15 in 2021, 2024 and 2025). That is the rule working, not a fault.</div>' : '')
+    + '<div class="pm-hint">Screened '+S.screened+' Binance pairs at '+t+' · '+S.eligible+' meet both floors. Skip anything that is not a crypto coin (tokenised stocks, gold tokens, stablecoins).</div>';
+}
 function lstRenderReminder(){
   const R = LST.res; if(!R) return; const due = !R.reviewed; const conf = R.rows.filter(r => r.act && r.confirmed).length, sugg = R.rows.filter(r => r.act).length, red = R.rows.filter(r => r.red.length).length;
-  const html = due ? '<div class="lst-due"><b>Monthly list review due ('+R.month+')</b> — '+sugg+' suggestion'+(sugg===1?'':'s')+(conf ? ', '+conf+' confirmed' : '')+(red ? ', <span style="color:var(--red)">'+red+' red flag'+(red>1?'s':'')+'</span>' : '')+'. Check the watchlist for High Beta candidates and High Beta for Alts candidates. <a href="#" onclick="showPage(\'lists\');RSPS.lists.render();return false">Open the review</a> · <a href="#" onclick="RSPS.lists.done();return false">Mark reviewed</a></div>' : '';
+  const html = due ? '<div class="lst-due"><b>Monthly list review due ('+R.month+')</b> — '+sugg+' suggestion'+(sugg===1?'':'s')+(conf ? ', '+conf+' confirmed' : '')+(red ? ', <span style="color:var(--red)">'+red+' red flag'+(red>1?'s':'')+'</span>' : '')+'. Apply the High Beta rule list (adds and removes) and check High Beta for Alts candidates. <a href="#" onclick="showPage(\'lists\');RSPS.lists.render();return false">Open the review</a> · <a href="#" onclick="RSPS.lists.done();return false">Mark reviewed</a></div>' : '';
   for(const id of ['lst-due-today', 'lst-due-rsps', 'lst-due-page']){ const el = document.getElementById(id); if(el) el.innerHTML = html; }
 }
 function lstDone(){ const st = lstLoad(); st.reviewedMonth = lstMonth(); st.reviewedAt = new Date().toISOString(); lstSave(st); if(LST.res) LST.res.reviewed = true; lstRenderReminder(); }
